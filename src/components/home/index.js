@@ -1,0 +1,10 @@
+export { default as Hero } from "./Hero";
+export { default as FeaturedCollection } from "./FeaturedCollection";
+export { default as Categories } from "./Categories";
+export { default as NewArrivals } from "./NewArrivals";
+export { default as BestSellers } from "./BestSellers";
+export { default as WhyVedrix } from "./WhyVedrix";
+export { default as FeaturedBanner } from "./FeaturedBanner";
+export { default as Testimonials } from "./Testimonials";
+export { default as Newsletter } from "./Newsletter";
+export { default as SocialGallery } from "./SocialGallery";

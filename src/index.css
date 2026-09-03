@@ -1,0 +1,50 @@
+/* @keyframes fadeSlide {
+  0% {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+
+  15% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  85% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-15px);
+  }
+}
+
+.animate-fade {
+  animation: fadeSlide 3.5s ease;
+} */
+
+@import "tailwindcss";
+@import "./styles/variables.css";
+@import "./styles/typography.css";
+@import "./styles/animations.css";
+@import "./styles/global.css";
+
+/* ── Marquee ticker animation ── */
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-33.333%); }
+}
+
+/* ── Base smoothing ── */
+html { scroll-behavior: smooth; }
+body { overflow-x: hidden; }
+img  { display: block; max-width: 100%; }
+
+/* ── Hide scrollbar but keep scroll ── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* @tailwind base;
+@tailwind components; */
+/* @tailwind utilities; */
