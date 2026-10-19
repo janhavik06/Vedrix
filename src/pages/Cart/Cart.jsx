@@ -14,6 +14,7 @@ import {
 const CartItemRow = ({ item }) => {
   const { updateQuantity, removeFromCart } = useCart();
   const p = item.product; // API shape
+  const atLimit = item.variant && item.quantity >= item.variant.stock;
 
   return (
     <div className="group flex flex-col gap-5 bg-white border border-gray-100 p-5 transition hover:border-gray-200 hover:shadow-sm md:flex-row md:items-start">
@@ -79,7 +80,8 @@ const CartItemRow = ({ item }) => {
           <span className="w-9 text-center text-sm font-semibold">{item.quantity}</span>
           <button
             onClick={() => updateQuantity(item.id, item.quantity + 1)}
-            className="flex h-9 w-9 items-center justify-center text-gray-500 transition hover:bg-gray-50"
+            disabled={atLimit}
+            className="flex h-9 w-9 items-center justify-center text-gray-500 transition hover:bg-gray-50 disabled:opacity-30"
           >
             <FiPlus size={13} />
           </button>
@@ -195,13 +197,13 @@ const CartSkeleton = () => (
 const Cart = () => {
   const { cartItems, cartTotal, loading } = useCart();
 
-  const [coupon, setCoupon]           = useState("");
+  const [coupon, setCoupon] = useState("");
   const [couponInput, setCouponInput] = useState("");
 
   const subtotal = cartTotal || 0;
   const shipping = subtotal >= 999 ? 0 : subtotal > 0 ? 99 : 0;
   const discount = coupon ? 500 : 0;
-  const total    = subtotal + shipping - discount;
+  const total = subtotal + shipping - discount;
 
   return (
     <>
@@ -339,9 +341,9 @@ const Cart = () => {
                 {/* Trust badges */}
                 <div className="border border-gray-100 bg-white divide-y divide-gray-50">
                   {[
-                    { icon: <FiShield size={15} />,    label: "Secure Checkout",  note: "256-bit SSL encryption" },
-                    { icon: <FiTruck size={15} />,     label: "Free Delivery",    note: "On orders above ₹999" },
-                    { icon: <FiRefreshCw size={15} />, label: "Easy Returns",     note: "7-day hassle-free returns" },
+                    { icon: <FiShield size={15} />, label: "Secure Checkout", note: "256-bit SSL encryption" },
+                    { icon: <FiTruck size={15} />, label: "Free Delivery", note: "On orders above ₹999" },
+                    { icon: <FiRefreshCw size={15} />, label: "Easy Returns", note: "7-day hassle-free returns" },
                   ].map((b) => (
                     <div key={b.label} className="flex items-center gap-4 px-5 py-4">
                       <span className="text-gray-400">{b.icon}</span>

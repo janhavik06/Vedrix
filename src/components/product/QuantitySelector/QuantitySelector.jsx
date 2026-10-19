@@ -1,29 +1,31 @@
 import { useState } from "react";
 import { FiMinus, FiPlus } from "react-icons/fi";
 
-const QuantitySelector = ({ onChange }) => {
-  const [quantity, setQuantity] = useState(1);
+/**
+ * Works on its own or controlled from outside with `value`.
+ * `max` stops the quantity going above the stock that is left.
+ */
+const QuantitySelector = ({ value, onChange, max }) => {
+  const [internal, setInternal] = useState(1);
+  const quantity = value !== undefined ? value : internal;
+  const atMax = max !== undefined && quantity >= max;
 
-  const decrease = () => {
-    if (quantity === 1) return;
-
-    const value = quantity - 1;
-
-    setQuantity(value);
+  const update = (next) => {
+    setInternal(next);
 
     if (onChange) {
-      onChange(value);
+      onChange(next);
     }
   };
 
+  const decrease = () => {
+    if (quantity === 1) return;
+    update(quantity - 1);
+  };
+
   const increase = () => {
-    const value = quantity + 1;
-
-    setQuantity(value);
-
-    if (onChange) {
-      onChange(value);
-    }
+    if (atMax) return;
+    update(quantity + 1);
   };
 
   return (
@@ -41,11 +43,14 @@ const QuantitySelector = ({ onChange }) => {
         "
       >
         <button
+          type="button"
           onClick={decrease}
+          disabled={quantity === 1}
           className="
             p-4
             hover:bg-gray-100
             transition
+            disabled:opacity-30
           "
         >
           <FiMinus />
@@ -54,11 +59,14 @@ const QuantitySelector = ({ onChange }) => {
         <span className="w-14 text-center font-semibold">{quantity}</span>
 
         <button
+          type="button"
           onClick={increase}
+          disabled={atMax}
           className="
             p-4
             hover:bg-gray-100
             transition
+            disabled:opacity-30
           "
         >
           <FiPlus />

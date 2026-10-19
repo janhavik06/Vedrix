@@ -1,10 +1,12 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import ScrollToTop from "../components/common/ScrollToTop/ScrollToTop";
 import AdminRoute from "../pages/Admin/AdminRoute";
-import AdminDashboard  from "../pages/Admin/AdminDashboard";
-import AdminProducts   from "../pages/Admin/AdminProducts";
-import AdminOrders     from "../pages/Admin/AdminOrders";
-import AdminCustomers  from "../pages/Admin/AdminCustomers";
+import AdminDashboard from "../pages/Admin/AdminDashboard";
+import AdminProducts from "../pages/Admin/AdminProducts";
+import AdminOrders from "../pages/Admin/AdminOrders";
+import AdminCustomers from "../pages/Admin/AdminCustomers";
+import ProtectedRoute from "./ProtectedRoute";
+import OrderDetails from "../pages/Orders/OrderDetails";
 
 import {
   Home,
@@ -43,19 +45,15 @@ const AppRoutes = () => {
 
         <Route path="/product/:id" element={<ProductDetails />} />
 
-        <Route path="/cart" element={<Cart />} />
-
-        <Route path="/checkout" element={<Checkout />} />
-
-        <Route path="/wishlist" element={<Wishlist />} />
+        <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
+        <Route path="/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
+        <Route path="/wishlist" element={<ProtectedRoute><Wishlist /></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+        <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+        <Route path="/orders/:id" element={<ProtectedRoute><OrderDetails /></ProtectedRoute>} />
 
         <Route path="/login" element={<Login />} />
-
         <Route path="/register" element={<Register />} />
-
-        <Route path="/profile" element={<Profile />} />
-
-        <Route path="/orders" element={<Orders />} />
 
         <Route path="/about" element={<About />} />
 
@@ -75,7 +73,7 @@ const AppRoutes = () => {
         {/* Admin panel — role-guarded */}
         <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
         <Route path="/admin/products" element={<AdminRoute><AdminProducts /></AdminRoute>} />
-        <Route path="/admin/orders"   element={<AdminRoute><AdminOrders /></AdminRoute>} />
+        <Route path="/admin/orders" element={<AdminRoute><AdminOrders /></AdminRoute>} />
         <Route path="/admin/customers" element={<AdminRoute><AdminCustomers /></AdminRoute>} />
       </Routes>
     </BrowserRouter>

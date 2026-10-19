@@ -2,20 +2,40 @@ import { useEffect, useRef, useState } from "react";
 import AdminLayout from "../../components/admin/AdminLayout";
 import { adminAPI } from "../../services/api";
 import {
-  FiPlus, FiEdit2, FiTrash2, FiX, FiCheck,
-  FiUpload, FiSearch, FiPackage, FiAlertTriangle,
+  FiPlus, FiEdit2, FiTrash2, FiX, FiCheck, FiUpload, FiSearch,
+  FiPackage, FiAlertTriangle, FiArchive, FiRotateCcw,
 } from "react-icons/fi";
 
-/* ── Badge map ── */
+/* ── Option lists ── */
 const BADGES = ["", "New", "Best Seller", "Trending", "Limited", "Sale"];
 const SIZES  = ["XS", "S", "M", "L", "XL", "XXL"];
 const COLORS = ["Black", "White", "Blue", "Olive", "Beige", "Gray", "Cream", "Charcoal"];
 
+const keyOf = (size, color) => `${size}|${color}`;
+
 /* ── Empty form state ── */
 const emptyForm = {
   name: "", description: "", price: "", oldPrice: "",
-  stock: "", badge: "", image: "",
-  sizes: [], colors: [], categoryId: "",
+  badge: "", image: "", categoryId: "",
+  sizes: [], colors: [],
+  stocks: {}, // "size|color" -> stock typed in the grid
+};
+
+// Turn a product coming from the API into form state
+const formFromProduct = (p) => {
+  const variants = p.variants || [];
+  return {
+    name: p.name || "",
+    description: p.description || "",
+    price: p.price ?? "",
+    oldPrice: p.oldPrice ?? "",
+    badge: p.badge || "",
+    image: p.image || "",
+    categoryId: p.categoryId ?? "",
+    sizes: [...new Set(variants.map((v) => v.size).filter(Boolean))],
+    colors: [...new Set(variants.map((v) => v.color).filter(Boolean))],
+    stocks: Object.fromEntries(variants.map((v) => [keyOf(v.size, v.color), String(v.stock)])),
+  };
 };
 
 /* ── Modal ── */
@@ -41,7 +61,8 @@ const ConfirmDelete = ({ name, onConfirm, onCancel }) => (
       <FiAlertTriangle size={40} className="mx-auto text-red-500" />
       <p className="mt-4 text-lg font-semibold text-gray-900">Are you sure?</p>
       <p className="mt-2 text-sm text-gray-500">
-        This will permanently delete <strong>{name}</strong> from your catalogue.
+        <strong>{name}</strong> will be deleted. If it has past orders it is archived
+        instead, so those orders keep their details.
       </p>
       <div className="mt-6 flex justify-center gap-3">
         <button onClick={onCancel} className="rounded-xl border border-gray-200 px-6 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-gray-900">
@@ -57,11 +78,25 @@ const ConfirmDelete = ({ name, onConfirm, onCancel }) => (
 
 /* ── Product Form ── */
 const ProductForm = ({ initial, categories, onSave, onClose }) => {
-  const [form, setForm]         = useState(initial || emptyForm);
+  const [form, setForm]           = useState(initial ? formFromProduct(initial) : emptyForm);
   const [uploading, setUploading] = useState(false);
-  const [saving, setSaving]     = useState(false);
-  const [error, setError]       = useState("");
-  const fileRef                 = useRef();
+  const [saving, setSaving]       = useState(false);
+  const [error, setError]         = useState("");
+  const fileRef                   = useRef();
+
+  // Keep any size/color the product already has, even if it is not in the lists
+  const sizeOptions  = [...new Set([...SIZES, ...form.sizes])];
+  const colorOptions = [...new Set([...COLORS, ...form.colors])];
+
+  // One row per size + color. No sizes and no colors = a single row.
+  const chosenSizes  = sizeOptions.filter((s) => form.sizes.includes(s));
+  const chosenColors = colorOptions.filter((c) => form.colors.includes(c));
+  const combos = (chosenSizes.length ? chosenSizes : [""]).flatMap((size) =>
+    (chosenColors.length ? chosenColors : [""]).map((color) => ({ size, color }))
+  );
+
+  const stockOf = (c) => parseInt(form.stocks[keyOf(c.size, c.color)]) || 0;
+  const totalStock = combos.reduce((sum, c) => sum + stockOf(c), 0);
 
   const change = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -72,6 +107,9 @@ const ProductForm = ({ initial, categories, onSave, onClose }) => {
         ? f[field].filter((v) => v !== val)
         : [...f[field], val],
     }));
+
+  const setStock = (c, value) =>
+    setForm((f) => ({ ...f, stocks: { ...f.stocks, [keyOf(c.size, c.color)]: value } }));
 
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -99,12 +137,10 @@ const ProductForm = ({ initial, categories, onSave, onClose }) => {
         description: form.description,
         price: parseFloat(form.price),
         oldPrice: form.oldPrice ? parseFloat(form.oldPrice) : null,
-        stock: parseInt(form.stock) || 0,
         image: form.image,
         badge: form.badge,
-        sizes: form.sizes,
-        colors: form.colors,
         categoryId: parseInt(form.categoryId),
+        variants: combos.map((c) => ({ size: c.size, color: c.color, stock: stockOf(c) })),
       };
       if (initial?.id) {
         await adminAPI.updateProduct(initial.id, payload);
@@ -159,7 +195,7 @@ const ProductForm = ({ initial, categories, onSave, onClose }) => {
         </p>
       </div>
 
-      {/* Name + Description */}
+      {/* Name + Category */}
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-600">Name *</label>
@@ -185,12 +221,11 @@ const ProductForm = ({ initial, categories, onSave, onClose }) => {
           placeholder="Describe the product..." />
       </div>
 
-      {/* Price + OldPrice + Stock + Badge */}
-      <div className="grid gap-4 sm:grid-cols-4">
+      {/* Price + OldPrice + Badge */}
+      <div className="grid gap-4 sm:grid-cols-3">
         {[
-          { name: "price",    label: "Price (₹) *", placeholder: "1799" },
+          { name: "price",    label: "Price (₹) *",   placeholder: "1799" },
           { name: "oldPrice", label: "Old Price (₹)", placeholder: "2299" },
-          { name: "stock",    label: "Stock",         placeholder: "50"   },
         ].map((f) => (
           <div key={f.name}>
             <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-600">{f.label}</label>
@@ -212,7 +247,7 @@ const ProductForm = ({ initial, categories, onSave, onClose }) => {
       <div>
         <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-600">Sizes</label>
         <div className="flex flex-wrap gap-2">
-          {SIZES.map((s) => (
+          {sizeOptions.map((s) => (
             <button key={s} type="button"
               onClick={() => toggleArr("sizes", s)}
               className={`rounded-xl border px-4 py-2 text-xs font-bold uppercase tracking-wider transition ${
@@ -228,7 +263,7 @@ const ProductForm = ({ initial, categories, onSave, onClose }) => {
       <div>
         <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-600">Colors</label>
         <div className="flex flex-wrap gap-2">
-          {COLORS.map((c) => (
+          {colorOptions.map((c) => (
             <button key={c} type="button"
               onClick={() => toggleArr("colors", c)}
               className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
@@ -238,6 +273,51 @@ const ProductForm = ({ initial, categories, onSave, onClose }) => {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Stock grid: one row per size + color */}
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <label className="text-xs font-bold uppercase tracking-wider text-gray-600">
+            Stock by size and color
+          </label>
+          <span className="text-xs font-semibold text-gray-500">Total: {totalStock}</span>
+        </div>
+        <div className="max-h-64 overflow-y-auto rounded-xl border border-gray-200">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="sticky top-0 border-b border-gray-100 bg-gray-50">
+                {["Size", "Color", "Stock"].map((h) => (
+                  <th key={h} className="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-[0.15em] text-gray-500">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {combos.map((c) => (
+                <tr key={keyOf(c.size, c.color)}>
+                  <td className="px-4 py-2 font-semibold text-gray-900">{c.size || "—"}</td>
+                  <td className="px-4 py-2 text-gray-600">{c.color || "—"}</td>
+                  <td className="px-4 py-2">
+                    <input
+                      type="number"
+                      min="0"
+                      value={form.stocks[keyOf(c.size, c.color)] ?? ""}
+                      onChange={(e) => setStock(c, e.target.value)}
+                      placeholder="0"
+                      className="w-24 rounded-lg border border-gray-200 px-3 py-1.5 text-sm outline-none focus:border-black"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-1.5 text-[10px] text-gray-400">
+          Saving replaces these numbers, so avoid editing stock while an order may be coming in.
+          Unticking a size or color removes it from the shop.
+        </p>
       </div>
 
       {/* Submit */}
@@ -256,34 +336,63 @@ const ProductForm = ({ initial, categories, onSave, onClose }) => {
 };
 
 /* ── Main page ── */
+const STATUS_FILTERS = [
+  { id: "active",   label: "Active" },
+  { id: "archived", label: "Archived" },
+  { id: "all",      label: "All" },
+];
+
 const AdminProducts = () => {
-  const [products,    setProducts]    = useState([]);
-  const [categories,  setCategories]  = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [search,      setSearch]      = useState("");
-  const [modal,       setModal]       = useState(null); // null | "add" | {product}
-  const [deleteTarget,setDeleteTarget]= useState(null);
+  const [products,     setProducts]     = useState([]);
+  const [categories,   setCategories]   = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [search,       setSearch]       = useState("");
+  const [statusFilter, setStatusFilter] = useState("active");
+  const [modal,        setModal]        = useState(null); // null | "add" | product
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [notice,       setNotice]       = useState("");
+  const [error,        setError]        = useState("");
 
   const load = () => {
     setLoading(true);
-    Promise.all([adminAPI.getProducts({ limit: 100 }), adminAPI.getCategories()])
+    const params = { limit: 500 };
+    if (statusFilter !== "all") params.status = statusFilter;
+
+    Promise.all([adminAPI.getProducts(params), adminAPI.getCategories()])
       .then(([pRes, cRes]) => {
         setProducts(pRes.products || []);
         setCategories(cRes.categories || []);
       })
-      .catch(console.error)
+      .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [statusFilter]);
 
   const handleDelete = async () => {
+    setError(""); setNotice("");
     try {
-      await adminAPI.deleteProduct(deleteTarget.id);
+      const res = await adminAPI.deleteProduct(deleteTarget.id);
+      setNotice(res.message);
+    } catch (err) {
+      setError(err.message);
+    } finally {
       setDeleteTarget(null);
       load();
+    }
+  };
+
+  const setActive = async (p, isActive) => {
+    if (!isActive && !window.confirm(`Archive "${p.name}"? It disappears from the shop and from customers' carts.`)) {
+      return;
+    }
+    setError(""); setNotice("");
+    try {
+      await adminAPI.updateProduct(p.id, { isActive });
+      setNotice(isActive ? `"${p.name}" is back in the shop.` : `"${p.name}" was archived.`);
+      load();
     } catch (err) {
-      console.error(err);
+      setError(err.message);
     }
   };
 
@@ -298,7 +407,7 @@ const AdminProducts = () => {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-3xl font-black text-gray-900">Products</h2>
-            <p className="mt-1 text-sm text-gray-500">{products.length} products in catalogue</p>
+            <p className="mt-1 text-sm text-gray-500">{products.length} products shown</p>
           </div>
           <button
             onClick={() => setModal("add")}
@@ -308,15 +417,41 @@ const AdminProducts = () => {
           </button>
         </div>
 
-        {/* Search */}
-        <div className="relative max-w-sm">
-          <FiSearch size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search products..."
-            className="w-full rounded-xl border border-gray-200 py-2.5 pl-10 pr-4 text-sm outline-none focus:border-black"
-          />
+        {notice && (
+          <p className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
+            {notice}
+          </p>
+        )}
+        {error && (
+          <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+            {error}
+          </p>
+        )}
+
+        {/* Search + status filter */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative max-w-sm flex-1">
+            <FiSearch size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search products..."
+              className="w-full rounded-xl border border-gray-200 py-2.5 pl-10 pr-4 text-sm outline-none focus:border-black"
+            />
+          </div>
+          <div className="flex gap-2">
+            {STATUS_FILTERS.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setStatusFilter(f.id)}
+                className={`rounded-full px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider transition ${
+                  statusFilter === f.id ? "bg-black text-white" : "border border-gray-200 text-gray-500 hover:border-black"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Table */}
@@ -343,62 +478,91 @@ const AdminProducts = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filtered.map((p) => (
-                    <tr key={p.id} className="hover:bg-gray-50 transition">
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-gray-100">
-                            {p.image && <img src={p.image} alt={p.name} className="h-full w-full object-cover" />}
+                  {filtered.map((p) => {
+                    const soldOutCount = (p.variants || []).filter((v) => v.stock === 0).length;
+                    return (
+                      <tr key={p.id} className={`transition hover:bg-gray-50 ${p.isActive ? "" : "opacity-60"}`}>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-gray-100">
+                              {p.image && <img src={p.image} alt={p.name} className="h-full w-full object-cover" />}
+                            </div>
+                            <div>
+                              <p className="font-bold text-gray-900 leading-snug">
+                                {p.name}
+                                {!p.isActive && (
+                                  <span className="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-bold uppercase text-gray-600">
+                                    Archived
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-xs text-gray-400">ID: {p.id}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-bold text-gray-900 leading-snug">{p.name}</p>
-                            <p className="text-xs text-gray-400">ID: {p.id}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 text-gray-600">{p.category?.name}</td>
-                      <td className="px-5 py-4">
-                        <p className="font-black text-gray-900">₹{p.price}</p>
-                        {p.oldPrice && <p className="text-xs text-gray-400 line-through">₹{p.oldPrice}</p>}
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className={`rounded-full px-3 py-1 text-xs font-bold ${
-                          p.stock === 0 ? "bg-red-100 text-red-600" :
-                          p.stock <= 5  ? "bg-orange-100 text-orange-600" :
-                          "bg-green-100 text-green-700"
-                        }`}>
-                          {p.stock === 0 ? "Out of stock" : `${p.stock} in stock`}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4">
-                        {p.badge ? (
-                          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-                            {p.badge}
+                        </td>
+                        <td className="px-5 py-4 text-gray-600">{p.category?.name}</td>
+                        <td className="px-5 py-4">
+                          <p className="font-black text-gray-900">₹{p.price}</p>
+                          {p.oldPrice && <p className="text-xs text-gray-400 line-through">₹{p.oldPrice}</p>}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className={`rounded-full px-3 py-1 text-xs font-bold ${
+                            p.stock === 0 ? "bg-red-100 text-red-600" :
+                            p.stock <= 5  ? "bg-orange-100 text-orange-600" :
+                            "bg-green-100 text-green-700"
+                          }`}>
+                            {p.stock === 0 ? "Out of stock" : `${p.stock} in stock`}
                           </span>
-                        ) : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setModal({
-                              ...p,
-                              sizes:  p.sizes  ? JSON.parse(p.sizes)  : [],
-                              colors: p.colors ? JSON.parse(p.colors) : [],
-                            })}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:border-black hover:bg-black hover:text-white"
-                          >
-                            <FiEdit2 size={13} />
-                          </button>
-                          <button
-                            onClick={() => setDeleteTarget(p)}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:border-red-500 hover:text-red-500"
-                          >
-                            <FiTrash2 size={13} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                          <p className="mt-1 text-[10px] text-gray-400">
+                            {(p.variants || []).length} variants
+                            {soldOutCount > 0 && ` · ${soldOutCount} sold out`}
+                          </p>
+                        </td>
+                        <td className="px-5 py-4">
+                          {p.badge ? (
+                            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+                              {p.badge}
+                            </span>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setModal(p)}
+                              title="Edit"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:border-black hover:bg-black hover:text-white"
+                            >
+                              <FiEdit2 size={13} />
+                            </button>
+                            {p.isActive ? (
+                              <button
+                                onClick={() => setActive(p, false)}
+                                title="Archive (hide from the shop)"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:border-orange-500 hover:text-orange-500"
+                              >
+                                <FiArchive size={13} />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setActive(p, true)}
+                                title="Restore to the shop"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:border-green-600 hover:text-green-600"
+                              >
+                                <FiRotateCcw size={13} />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setDeleteTarget(p)}
+                              title="Delete"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:border-red-500 hover:text-red-500"
+                            >
+                              <FiTrash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

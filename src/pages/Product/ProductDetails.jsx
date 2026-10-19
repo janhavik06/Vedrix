@@ -14,7 +14,26 @@ import { useCart } from "../../context/CartContext";
 import { useWishlist } from "../../context/WishlistContext";
 import { useAuth } from "../../context/AuthContext";
 import { productAPI, reviewAPI } from "../../services/api";
-import { FiHeart, FiShoppingBag, FiArrowLeft, FiStar } from "react-icons/fi";
+import { FiHeart, FiShoppingBag, FiStar } from "react-icons/fi";
+
+const COLOR_CODES = {
+  Black: "#111111",
+  White: "#ffffff",
+  Blue: "#2563eb",
+  Olive: "#6b6b47",
+  Beige: "#d4c5a9",
+  Gray: "#888888",
+  Cream: "#f5f0e1",
+  Charcoal: "#36454f",
+};
+
+const safeParse = (json, fallback) => {
+  try {
+    return json ? JSON.parse(json) : fallback;
+  } catch {
+    return fallback;
+  }
+};
 
 /* ── Review Form ─────────────────────────────────────────── */
 const ReviewForm = ({ productId, onSubmitted }) => {
@@ -121,24 +140,50 @@ const ProductDetails = () => {
 
   const inWishlist = product ? isInWishlist(product.id) : false;
 
-  // Parse JSON fields from the API
-  const parsedSizes  = product?.sizes  ? JSON.parse(product.sizes)  : [];
-  const parsedColors = product?.colors ? JSON.parse(product.colors) : [];
-
-  const colorObjects = parsedColors.map((c) => ({
-    name: c,
-    code: c === "Black" ? "#111" : c === "White" ? "#fff" : c === "Beige" ? "#d4c5a9" : c === "Olive" ? "#6b6b47" : "#888",
+  /* ── variants: one row per size + color, each with its own stock ── */
+  const variants   = product?.variants ?? [];
+  const sizes      = [...new Set(variants.map((v) => v.size).filter(Boolean))];
+  const colorNames = [...new Set(variants.map((v) => v.color).filter(Boolean))];
+  const colorObjects = colorNames.map((name) => ({
+    name,
+    code: COLOR_CODES[name] || "#888888",
   }));
 
-  const fetchProduct = async () => {
+  // A size is sold out when none of its variants has stock
+  // (counting only the chosen color, once one is chosen)
+  const soldOutSizes = sizes.filter(
+    (s) => !variants.some(
+      (v) => v.size === s && (!selectedColor || v.color === selectedColor) && v.stock > 0
+    )
+  );
+  const soldOutColors = colorNames.filter(
+    (c) => !variants.some(
+      (v) => v.color === c && (!selectedSize || v.size === selectedSize) && v.stock > 0
+    )
+  );
+
+  const needsSize  = sizes.length > 0;
+  const needsColor = colorNames.length > 0;
+  const choiceMade = (!needsSize || selectedSize) && (!needsColor || selectedColor);
+
+  const selectedVariant = choiceMade
+    ? variants.find((v) => v.size === selectedSize && v.color === selectedColor)
+    : undefined;
+
+  const allSoldOut = variants.length > 0
+    ? variants.every((v) => v.stock <= 0)
+    : product?.stock === 0;
+
+  const fetchProduct = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const [prodRes, revRes] = await Promise.all([
         productAPI.getById(id),
-        reviewAPI.getForProduct(id),
+        // a broken reviews request must not hide the whole product
+        reviewAPI.getForProduct(id).catch(() => ({ reviews: [] })),
       ]);
       setProduct(prodRes.product);
-      setReviews(revRes.reviews);
+      setReviews(revRes.reviews || []);
     } catch (err) {
       setError("Product not found.");
     } finally {
@@ -146,10 +191,48 @@ const ProductDetails = () => {
     }
   };
 
-  useEffect(() => { fetchProduct(); }, [id]);
+  useEffect(() => {
+    setSelectedSize("");
+    setSelectedColor("");
+    setQuantity(1);
+    setCartMsg("");
+    fetchProduct();
+  }, [id]);
+
+  // Picking a size or color keeps the other choice only if that pair is in stock
+  const handleSize = (size) => {
+    setSelectedSize(size);
+    if (
+      selectedColor &&
+      !variants.some((v) => v.size === size && v.color === selectedColor && v.stock > 0)
+    ) {
+      setSelectedColor("");
+    }
+    setQuantity(1);
+    setCartMsg("");
+  };
+
+  const handleColor = (color) => {
+    setSelectedColor(color);
+    if (
+      selectedSize &&
+      !variants.some((v) => v.color === color && v.size === selectedSize && v.stock > 0)
+    ) {
+      setSelectedSize("");
+    }
+    setQuantity(1);
+    setCartMsg("");
+  };
 
   const handleAddToCart = async () => {
     if (!user) { setCartMsg("Please login to add to cart."); return; }
+    if (needsSize && !selectedSize)   { setCartMsg("Select a size.");  return; }
+    if (needsColor && !selectedColor) { setCartMsg("Select a color."); return; }
+    if (selectedVariant && quantity > selectedVariant.stock) {
+      setCartMsg(`Only ${selectedVariant.stock} left in this size and color.`);
+      return;
+    }
+
     setAddingToCart(true);
     setCartMsg("");
     try {
@@ -217,11 +300,8 @@ const ProductDetails = () => {
         <div className="grid gap-12 lg:grid-cols-2">
           <ProductGallery
             images={
-              product.images
-                ? JSON.parse(product.images)
-                : product.image
-                ? [product.image]
-                : []
+              safeParse(product.images, null) ||
+              (product.image ? [product.image] : [])
             }
           />
 
@@ -232,15 +312,41 @@ const ProductDetails = () => {
               reviews: product.reviewCount,
             }} />
 
-            {colorObjects.length > 0 && (
-              <ColorSelector colors={colorObjects} onChange={setSelectedColor} />
+            {needsColor && (
+              <ColorSelector
+                colors={colorObjects}
+                value={selectedColor}
+                onChange={handleColor}
+                disabled={soldOutColors}
+              />
             )}
 
-            {parsedSizes.length > 0 && (
-              <SizeSelector sizes={parsedSizes} onChange={setSelectedSize} />
+            {needsSize && (
+              <SizeSelector
+                sizes={sizes}
+                value={selectedSize}
+                onChange={handleSize}
+                disabled={soldOutSizes}
+              />
             )}
 
-            <QuantitySelector onChange={setQuantity} />
+            <QuantitySelector
+              value={quantity}
+              onChange={setQuantity}
+              max={selectedVariant ? Math.max(selectedVariant.stock, 1) : undefined}
+            />
+
+            {/* Stock for the chosen size + color */}
+            {selectedVariant && selectedVariant.stock > 0 && selectedVariant.stock <= 5 && (
+              <p className="text-sm font-semibold text-orange-600">
+                Only {selectedVariant.stock} left in this size and color!
+              </p>
+            )}
+            {selectedVariant && selectedVariant.stock === 0 && (
+              <p className="text-sm font-semibold text-red-500">
+                This size and color is sold out.
+              </p>
+            )}
 
             {/* Cart message */}
             {cartMsg && (
@@ -253,11 +359,11 @@ const ProductDetails = () => {
             <div className="flex gap-4">
               <button
                 onClick={handleAddToCart}
-                disabled={addingToCart || product.stock === 0}
+                disabled={addingToCart || allSoldOut}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-black py-4 font-semibold text-white transition hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <FiShoppingBag size={18} />
-                {product.stock === 0 ? "Out of Stock" : addingToCart ? "Adding..." : "Add to Cart"}
+                {allSoldOut ? "Out of Stock" : addingToCart ? "Adding..." : "Add to Cart"}
               </button>
 
               <button
@@ -292,7 +398,7 @@ const ProductDetails = () => {
             <p className="text-gray-500 py-8">No reviews yet. Be the first to review this product!</p>
           )}
 
-          <ReviewForm productId={product.id} onSubmitted={fetchProduct} />
+          <ReviewForm productId={product.id} onSubmitted={() => fetchProduct(true)} />
         </section>
 
         <RelatedProducts categoryId={product.categoryId} currentId={product.id} />

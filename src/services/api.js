@@ -1,6 +1,6 @@
 // Central API service — all backend calls go through here
 
-const BASE_URL = "http://localhost:5000/api";
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 // ── Helper: get stored token ──────────────────────────────
 const getToken = () => localStorage.getItem("vedrix_token");
@@ -132,7 +132,7 @@ export const adminAPI = {
     const token = localStorage.getItem("vedrix_token");
     const form  = new FormData();
     form.append("image", file);
-    const res  = await fetch("http://localhost:5000/api/admin/upload", {
+    const res  = await fetch(`${BASE_URL}/admin/upload`, {
       method:  "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body:    form,
@@ -148,6 +148,7 @@ export const adminAPI = {
     return get(`/admin/orders${qs ? `?${qs}` : ""}`);
   },
   updateOrderStatus: (id, status) => put(`/admin/orders/${id}/status`, { status }),
+  updateOrder: (id, data) => put(`/admin/orders/${id}/status`, data),
 
   // Customers
   getCustomers:     (params = {}) => {

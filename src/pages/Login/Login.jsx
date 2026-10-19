@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Footer } from "../../components/layout";
 import { LoginForm } from "../../components/auth";
 import { useAuth } from "../../context";
@@ -14,11 +14,13 @@ const perks = [
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+
   const { login } = useAuth();
 
   const [formData, setFormData] = useState({ email: "", password: "" });
-  const [error, setError]       = useState("");
-  const [loading, setLoading]   = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (e) =>
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -28,8 +30,9 @@ const Login = () => {
     setError("");
     setLoading(true);
     try {
-      await login(formData.email, formData.password);
-      navigate("/");
+      const res = await login(formData.email, formData.password);
+      const from = location.state?.from?.pathname;
+      navigate(from || (res.user?.role === "ADMIN" ? "/admin" : "/"), { replace: true });
     } catch (err) {
       setError(err.message || "Invalid email or password.");
     } finally {
